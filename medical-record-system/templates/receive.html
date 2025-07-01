@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Người nhận - Nhận bệnh án</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+</head>
+<body>
+<div class="container mt-5">
+  <h2 class="text-success">📥 Nhận gói bệnh án</h2>
+
+  <!-- Thông báo gói mới -->
+  <div id="notify" class="alert alert-info" style="display:none"></div>
+
+  <!-- Nhập mật khẩu -->
+  <form id="autoForm" style="display:none">
+    <div class="mb-3">
+      <label class="form-label">🔐 Nhập mật khẩu xác thực:</label>
+      <input type="password" class="form-control" id="receiver_password" required>
+    </div>
+    <button type="button" class="btn btn-success w-100" onclick="submitAuto()">🧪 Xác thực & Giải mã</button>
+  </form>
+
+  <!-- Kết quả -->
+  <div id="result" class="mt-4" style="display:none">
+    <h5>Kết quả xác thực:</h5>
+    <ul id="verify_steps" class="list-group mb-3"></ul>
+    <a id="downloadBtn" class="btn btn-primary" href="#" style="display:none">⬇️ Tải file đã giải mã</a>
+  </div>
+</div>
+
+<script>
+  let packetData = null;
+  const socket = io();
+
+  socket.on('incoming_packet', data => {
+    packetData = data;
+    document.getElementById('notify').style.display = 'block';
+    document.getElementById('notify').innerText = `📨 Gói tin mới từ người gửi: ${data.metadata.filename}`;
+    document.getElementById('autoForm').style.display = 'block';
+    document.getElementById('result').style.display = 'none';
+  });
+
+  function submitAuto() {
+    const password = document.getElementById('receiver_password').value;
+    if (!packetData || !password) return;
+
+    packetData["receiver_password"] = password;
+
+    const list = document.getElementById('verify_steps');
+    list.innerHTML = '';
+    document.getElementById('result').style.display = 'block';
+    document.getElementById('downloadBtn').style.display = 'none';
+
+    fetch('/receive_auto', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(packetData)
+    })
+    .then(res => res.text())
+    .then(text => {
+      const steps = {
+        "hash": "✅ Toàn vẹn (SHA-512) hợp lệ",
+        "pwd": "✅ Mật khẩu hợp lệ",
+        "sig": "✅ Chữ ký hợp lệ",
+        "fail_hash": "❌ Sai hash – Dữ liệu bị thay đổi",
+        "fail_pwd": "❌ Mật khẩu không đúng",
+        "fail_sig": "❌ Chữ ký không hợp lệ"
+      };
+
+      if (text.includes("Sai hash")) list.innerHTML += `<li class="list-group-item text-danger">${steps.fail_hash}</li>`;
+      else list.innerHTML += `<li class="list-group-item text-success">${steps.hash}</li>`;
+
+      if (text.includes("Sai mật khẩu")) list.innerHTML += `<li class="list-group-item text-danger">${steps.fail_pwd}</li>`;
+      else list.innerHTML += `<li class="list-group-item text-success">${steps.pwd}</li>`;
+
+      if (text.includes("Chữ ký không hợp lệ")) list.innerHTML += `<li class="list-group-item text-danger">${steps.fail_sig}</li>`;
+      else list.innerHTML += `<li class="list-group-item text-success">${steps.sig}</li>`;
+
+      // Nếu hợp lệ – cho tải file
+      if (text.includes("thành công")) {
+        document.getElementById('downloadBtn').href = `/download/${packetData.filename}`;
+        document.getElementById('downloadBtn').style.display = 'inline-block';
+      }
+    });
+  }
+</script>
+</body>
+</html>
